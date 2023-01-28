@@ -1,0 +1,61 @@
+---
+title: "Análisis STATIS para los datos de vinos"
+author: "Giovany Babativa-Márquez, Ph.D."
+date: "Enero 2023"
+bibliography: references.bib
+link-citations: true
+toc-title: "Tabla de Contenido"
+lang: ES-es
+output:
+  bookdown::word_document2:
+    extra_dependencies: ["booktabs", "table","xcdraw"]
+    md_extensions: +footnotes
+    reference_docx: Plantilla.docx
+    toc: true
+    number_sections: true
+    fig_caption: yes
+fontsize: 12pt
+---
+
+```{r setup, include=FALSE}
+options(scipen=999, warn=-1, survey.lonely.psu="certainty")
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, echo = FALSE,
+                      fig.align  = "center",
+                      tab.cap.pre = "Tabla ")
+library(pacman)
+
+p_load(here, tidyverse, readxl, janitor)
+
+custom_tab <- function(df){
+  mytab <- df |>  
+    flextable() |> 
+    bg(bg = "#5786C0", part = "header")  |> 
+    color(color = "white", part = "header") |> 
+    autofit()
+  return(mytab)
+}
+
+```
+
+# Introducción
+
+El artículo de @abdi2012statis se presentan diferentes conjuntos de datos que permiten realizar análisis multivariante para tablas múltiples.
+
+Para este primer ejemplo, los autores seleccionaron doce (12) vinos elaborados con uvas Sauvignon Blanc provenientes de tres (3) regiones (Nueva Zelanda, Francia y Canadá) y se eligieron cuatro (4) vinos de cada región. 
+
+Se le pidió a 10 asesores expertos que evaluaran estos vinos, para ello se usaron escalas de calificación de 9 puntos, utilizando cuatro variables consideradas estándar para la evaluación de estos vinos (cat-pee, maracuyá, pimiento verde y mineral). Y segundo, si sentían la necesidad, los evaluadores tenían la libertad de añadir  variables propias (algunos evaluadores no eligen ninguna, algunos eligen una, dos o más variables).
+
+# Paquetes requeridos para el análisis
+
+```{r, echo=TRUE}
+library(pacman)
+
+p_load(tidyverse, janitor, readxl,
+       ade4, adegraphics,
+       corrplot,
+       flextable, officer)
+```
+
+\newpage
+
+# Referencias {.unlisted .unnumbered}
