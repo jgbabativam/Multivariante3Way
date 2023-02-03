@@ -69,8 +69,3 @@ View(comprin$var$coord)
 library(explor)
 explor(comprin)
 
-
-######### Factoshiny
-
-res <- Factoshiny(datosJ)
-
