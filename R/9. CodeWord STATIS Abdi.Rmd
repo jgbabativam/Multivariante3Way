@@ -1,0 +1,217 @@
+---
+title: "Análisis STATIS para los datos de vinos"
+author: "Giovany Babativa-Márquez, Ph.D."
+date: "Enero 2023"
+bibliography: references.bib
+link-citations: true
+toc-title: "Tabla de Contenido"
+lang: es
+output:
+  bookdown::word_document2:
+    extra_dependencies: ["booktabs", "table","xcdraw"]
+    md_extensions: +footnotes
+    reference_docx: Plantilla.docx
+    toc: true
+    number_sections: true
+    fig_caption: yes
+fontsize: 12pt
+---
+
+```{r setup, include=FALSE}
+options(scipen=999, warn=-1, survey.lonely.psu="certainty")
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, echo = TRUE,
+                      fig.align  = "center",
+                      tab.cap.pre = "Tabla ")
+library(pacman)
+
+p_load(here, tidyverse, readxl, janitor)
+
+custom_tab <- function(df){
+  mytab <- df |>  
+    flextable() |> 
+    bg(bg = "#5786C0", part = "header")  |> 
+    color(color = "white", part = "header") |> 
+    autofit()
+  return(mytab)
+}
+
+```
+
+# Introducción
+
+El artículo de @abdi2012statis se presentan diferentes conjuntos de datos que permiten realizar análisis multivariante para tablas múltiples.
+
+Para este primer ejemplo, los autores seleccionaron doce (12) vinos elaborados con uvas Sauvignon Blanc provenientes de tres (3) regiones (Nueva Zelanda, Francia y Canadá) y se eligieron cuatro (4) vinos de cada región. 
+
+Se le pidió a 10 asesores expertos que evaluaran estos vinos, para ello se usaron escalas de calificación de 9 puntos, utilizando cuatro variables consideradas estándar para la evaluación de estos vinos (cat-pee, maracuyá, pimiento verde y mineral). Y segundo, si sentían la necesidad, los evaluadores tenían la libertad de añadir  variables propias (algunos evaluadores no eligen ninguna, algunos eligen una, dos o más variables).
+
+# Paquetes requeridos para el análisis
+
+```{r, echo=TRUE}
+library(pacman)
+
+p_load(tidyverse, janitor, readxl,
+       ade4, adegraphics,
+       corrplot,
+       flextable, officer)
+```
+
+# Estructura del conjunto de datos 
+
+Teóricamente, es adecuado un análisis STATIS o un AFM cuando los datos presentan una estructura como la presentada en la Figura \@ref(fig:figSTATIS). En este caso, cada fila corresponde a cada uno de los 4 vinos de cada región (12 filas) y cada grupo (bloque) de variables corresponde a las valoraciones que realizó cada asesor experto. Sin embargo, la estructura requerida por los paquetes estadísticos puede llegar a ser diferente según el paquete que se utilice. 
+
+```{r figSTATIS, fig.cap="Esquema teórico para un STATIS o AFM", out.width = '100%'}
+knitr::include_graphics(here::here("images/0 MFA.png"))
+```
+
+A partir de lo anterior se tiene que $K=10$ tablas porque tenemos 10 asesores, $p_j$ es la cantidad de variables medidas por el asesor $j$, y $n=12$ porque todos probaron los mismos 12 vinos.
+
+El conjunto de datos se encuentra disponible en la carpeta `data` dentro del proyecto y tiene el nombre de `wine.xlsx`.
+
+```{r}
+wine <- read_excel(here::here("data/wine.xlsx"))
+```
+
+En la Tabla \@ref(tab:estr) se presenta la manera como deben estar estructurados los datos para el análisis usando el paquete `ade4`.
+
+```{r estr, tab.cap = "Estructura del conjunto de datos"}
+tab <- wine |> 
+       filter(Asesor %in% c("AS1", "AS2", "AS3"))
+
+custom_tab(tab) |> fit_to_width(7.5)
+```
+
+## Preparación de los datos
+
+Ahora debemos especificar cuáles son los grupos para el análisis STATIS. Como se mencionó, las filas corresponde a cada una de las cuatro variedades de vinos y los grupos son los asesores. Así que creamos un objeto de tipo factor con los niveles que corresponde a la variable de agrupación: 
+
+```{r}
+asesores<- factor(wine$Asesor,
+                  levels = c("AS1", "AS2", "AS3", "AS4", "AS5", 
+                             "AS6", "AS7", "AS8", "AS9", "AS10")) 
+```
+
+El siguiente paso es estandarizar y separar los datos en las $k$-tablas, es decir, en 10 tablas. Para ello se aplica un ACP normalizado sobre las columnas $NZ1$ hasta $CA4$ y, utilizamos la variable ASESORES para identificar las $K$-tablas. La estandarización se puede aplicar a TOTAL o a nivel PARCIAL.
+
+La función `withinpca()` del paquete *ade4* hace este trabajo, el argumento `fac` indica el factor que separa a las tablas, mientras que el argumento `scaling` indica si la estadarización se hace a total o de forma parcial. Si el argumento `scannf` es falso entonces no se especifica una cantidad determinada de ejes a retener. Ver detalles con `?withinpca`.
+
+```{r}
+
+#---- Aplica componentes principales, normaliza las variables.
+wpca <- withinpca(wine[,c(3:14)], fac = asesores, scaling = "total", scannf = F)
+```
+
+# Análisis de los datos 
+
+A partir del objeto estandarizado `wpca` se abren los datos en las $K$-tablas para realizar el análisis STATIS, es decir, que se va a separar los datos de cada asesor en una tabla independiente. Para ello se usa la función `ktab.within()` del paquete *ade4* y se le indica en el argumento `colnames` la variable que especifica las características que evaluó cada asesor.
+
+```{r}
+#---- Abre los objetos en K tablas para poder hacer el STATIS.
+ktab1 <- ktab.within(wpca, colnames = wine$Var)
+```
+
+Podemos ver que el objeto creado es de tipo _list_ y contiene 18 objetos. Explore y verifique que contiene las 10 tablas y otra información relevante que proviene del objeto anterior, como el peso que le corresponde a cada tabla.
+
+Para ver la información de cada tabla se imprime el objeto que corresponda. Por ejemplo, para el asesor 1 se puede ver así, `ktab1$AS1`:
+
+
+```{r tabAs1, tab.cap = "Tabla de información para el asesor 1"}
+### Tabla para el asesor 1
+custom_tab(ktab1$AS1 |> 
+             mutate(across(everything(), ~round(.,digits = 3))))
+```
+
+Para indicarle al programa que ejecute el análisis STATIS, se usa la función `statis()` sobre el objeto de las $K$-tablas divididas. El argumento `scannf = F` se usa para no especificar la cantidad de ejes a retener.
+
+```{r}
+statisVinos <- statis(ktab1, scannf = F) 
+```
+
+Al explorar el objetos `statisVinos` ya podemos realizar los análisis. 
+
+```{r}
+summary(statisVinos)
+```
+
+Recordar que:
+
+- *Interestructura*: Indica si las $K$-tablas presentan estructuras similares (opiniones similares).
+
+- *Compromiso*: Representa la estructura promedio de la puntuación de las $K$-tablas (10 asesores).
+
+- *Valor tipológico*: Grafica los pesos y el $cos^2$ de cada una de las $K$ tablas.
+
+En la Figura \@ref(fig:rv) se observa que hay un alto grado de "acuerdo" entre los asesores, esto debido a que los coeficientes de correlación son altos, indicando una estructura similar entre la opinión de los asesores.
+
+```{r rv, fig.cap = "Matriz RV de correlaciones vectoriales"}
+corrplot(statisVinos$RV, method = "shade")      
+```
+
+En la _interestructura_ la primera componente principal explica el 60.2\%, indicando una estructura similar entre las $K$-tablas (opiniones de los diferentes asesores). La Figura \@ref(fig:valp) presenta los valores propios de cada eje, donde se observa que el primer eje recoje la información principal de las tablas.
+
+```{r valp, fig.cap="Gráfico de valores propios"}
+data.frame(vp = statisVinos$RV.eig) |> 
+  mutate(eje = factor(1:n())) |> 
+  ggplot(aes(x = eje, y = vp)) +
+  geom_col(fill = "lightblue") +
+  geom_text(aes(label = round(vp, 1)), position=position_dodge(width=0.9), vjust=-0.25) +
+  labs(y = "Valor propio")
+```
+
+El objeto `statisVinos$RV.tabw` contiene las ponderaciones que le corresponde a cada tabla para construir el consenso, las cuales se presentan en la Tabla \@ref(tab:pesos).
+
+```{r pesos, tab.cap = "Ponderaciones de cada asesor en el consenso"}
+tab <- data.frame(Peso = statisVinos$RV.tabw) |> 
+       mutate(Asesor = paste0("Asesor ", 1:n())) |> 
+       relocate(Asesor)
+
+custom_tab(tab)
+```
+
+El resumen general del análisis se obtiene con la función `plot()` y se obtiene la salida de la Figura \@ref(fig:resG). En donde valores altos de $cos^2$, indican que en el compromiso se representa de mejor manera la opinión de esos Asesores ($K$-tablas). 
+
+
+```{r resG, fig.cap="Resumen general del STATIS"}
+plot(statisVinos) 
+```
+
+La Tabla \@ref(tab:cos2) presenta la contribución que tiene cada asesor sobre la estructura del compromiso.
+
+```{r cos2, tab.cap = "Contribuciones de cada tabla en el compromiso"}
+tab <- data.frame(AS=statisVinos$tab.names,
+                  cos2=statisVinos$cos2)
+custom_tab(tab)
+```
+
+
+Ahora revisamos los valores propios para el compromiso. En la Tabla \@ref(tab:tabVPc) se observa que los dos primeros ejes explican el 68.72\% de la varianza total.
+
+```{r tabVPc, tab.cap = "Valores propios en el compromiso"}
+tab <- data.frame(
+                  CEig= statisVinos$C.eig,
+                  "Porc Var"= statisVinos$C.eig/sum(statisVinos$C.eig),
+                  "Porc Var Acum"= cumsum(statisVinos$C.eig/sum(statisVinos$C.eig))
+)
+custom_tab(tab)
+```
+
+A partir de la Figura \@ref(fig:fKtab) y de la Figura \@ref(fig:rowC) se puede concluir que el *asesor 1* proporcionó al vino Francés, puntuaciones por encima del valor promedio en Mineral y Smoky y, por debajo del valor promedio en Passion Fruit y Citrus. Los vinos de Nueva Zelanda y los 3 de Canadá (1, 3, y 4) obtuvieron puntuaciones por encima del valor promedio en Cat Pee y Greem Pepper... 
+
+
+```{r fKtab, fig.cap="Analisis separados sobre el consenso"}
+kpl <- kplot(statisVinos, traj = FALSE, arrow = TRUE, plab.cex = 0.5, psub.cex = 1, col.plabels = list(cex = 0.5, col = "red", label = wine$Var))
+```
+
+
+```{r rowC, fig.cap = "Coordenadas de las filas en el compromiso"}
+g1 <- s.arrow(statisVinos$C.li, pgrid.text.cex = 0)
+```
+
+```{r}
+kpl[[1]]
+```
+
+
+\newpage
+
+# Referencias {.unlisted .unnumbered}

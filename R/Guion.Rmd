@@ -1,0 +1,556 @@
+---
+title: "Guión de Scripts"
+author: "Giovany Babativa-Márquez, Ph.D."
+date: "Enero 2023"
+bibliography: references.bib
+link-citations: true
+toc-title: "Tabla de Contenido"
+lang: ES-es
+output:
+  bookdown::word_document2:
+    extra_dependencies: ["booktabs", "table","xcdraw"]
+    md_extensions: +footnotes
+    reference_docx: Plantilla.docx
+    toc: true
+    number_sections: true
+    fig_caption: yes
+fontsize: 12pt
+---
+
+```{r setup, include=FALSE}
+options(scipen=999, warn=-1, survey.lonely.psu="certainty")
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, echo = TRUE,
+                      fig.align  = "center",
+                      tab.cap.pre = "Tabla ")
+library(pacman)
+
+p_load(here, tidyverse, readxl, janitor)
+
+custom_tab <- function(df){
+  mytab <- df |>  
+    flextable() |> 
+    bg(bg = "#5786C0", part = "header")  |> 
+    color(color = "white", part = "header") |> 
+    autofit()
+  return(mytab)
+}
+
+```
+
+# PROTEINAS
+
+```{r, eval=FALSE}
+######========================================================
+######   Script por Giovany Babativa-Márquez, PhD. 
+######========================================================
+#==  Use el conjunto de datos sobre consumo de proteínas en varios   
+#==  países para realizar un análisis HJ-Biplot,
+#==  Utilice los paquetes
+#==      1. MultBiplotR
+#==      2. BiplotGUI
+#============================================================
+
+rm(list = ls())
+
+#.... Paquetes.
+
+library(pacman)
+
+p_load(readxl, tidyverse, MultBiplotR, BiplotML, janitor, here, skimr, foreign,
+       factoextra, FactoMineR, Factoshiny, FactoInvestigate,
+       explor, BiplotGUI,
+       corrplot, patchwork,
+       RSpectra)
+
+
+######-------------------- Ejemplo Proteinas
+
+proteinas <- read_excel(here::here("data/Consumo Proteinas.xlsx")) |> 
+             clean_names()
+
+glimpse(proteinas)
+
+datos <- proteinas |> 
+         column_to_rownames(var = "pais") |> 
+         select(where(is.numeric))
+
+
+skim(datos)
+
+#-- Análisis HJ-Biplot usando el paquete MultBiplotR
+
+
+hjProteinas <-  MultBiplotR::HJ.Biplot(datos)
+
+hjProteinas$Inertia
+
+
+data.frame(value=hjProteinas$Inertia) |> 
+  mutate(Eje = 1:n()) |> 
+  ggplot(aes(x = Eje, y = value)) +
+  geom_col(fill = "lightblue") +
+  labs(y = "% Inercia") +
+  geom_text(aes(label=round(value, 1)), position=position_dodge(width=0.9), vjust=-0.25) +
+  theme_bw() 
+
+
+hjProteinas$ColContributions
+
+corrplot(hjProteinas$ColContributions, is.corr =  F) # method = "pie"
+
+hjProteinas$RowContributions
+
+
+corrplot(hjProteinas$RowContributions, is.corr =  F) 
+
+
+summary(hjProteinas)
+
+plot(hjProteinas)
+CorrelationCircle(hjProteinas)
+
+#####---- Biplot Interactivo usando el paquete BiplotGUI
+
+BiplotGUI::Biplots(datos)
+```
+
+\newpage
+
+# JUGADORES DE FÚTBOL
+
+```{r, eval=FALSE}
+######========================================================
+######   Script por Giovany Babativa-Márquez, PhD. 
+######========================================================
+#==  Use el conjunto de datos sobre el rendimiento de los jugadores 
+#==  profesionales de fútbol para realizar un análisis multivariante 
+#==  y un análisis clúster. Utilice los paquetes
+#==
+#==  Utilice los paquetes
+#==      1. FactoMineR y factoextra
+#==      2. explor
+#==      3. Factoshiny
+#============================================================
+
+rm(list = ls())
+
+
+library(pacman)
+
+p_load(readxl, tidyverse, MultBiplotR, BiplotML, janitor, here, skimr, foreign,
+       factoextra, FactoMineR, Factoshiny, FactoInvestigate,
+       explor, BiplotGUI,
+       corrplot, patchwork,
+       RSpectra)
+
+#----- Ejemplo jugadores.
+
+jugadores <- read_excel(here::here("data/jugadores.xlsx")) |> 
+             clean_names()
+
+glimpse(jugadores)
+
+skim(jugadores)
+
+datosJ <- jugadores |> 
+          column_to_rownames(var = "nombre") |> 
+          select(where(is.numeric), -id)
+
+############################  Análisis de componentes principales
+
+comprin <- PCA(datosJ , scale.unit=TRUE, ncp=5, graph = FALSE)
+
+fviz_screeplot(comprin, ncp=10, title="Valores propios", ylab="Porcentaje de varianza", xlab="Eje")
+
+comprin$eig
+
+g3 <- fviz_pca_ind(comprin, col.ind="cos2", title="Proyección de los jugadores") +
+      scale_color_gradient2(low="white", mid="blue", 
+                            high="red", midpoint=0.50)
+g3
+
+
+g4 <- fviz_pca_var(comprin, col.var="contrib", axes=c(1,2), title="Proyección de las habilidades")+
+      scale_color_gradient2(low="white", mid="blue", 
+                             high="red", midpoint=2)+theme_bw()
+
+g4
+
+jugadores$posicion <- as.factor(jugadores$posicion)
+
+dev.new()
+fviz_pca_ind(comprin,  label="none", habillage=jugadores$posicion, title="Jugadores por posición")
+
+
+fviz_pca_biplot(comprin)
+
+View(comprin$ind$coord)
+View(comprin$var$coord)
+
+library(explor)
+explor(comprin)
+
+
+######### Factoshiny
+
+res <- Factoshiny(datosJ)
+```
+
+\newpage
+
+# POSICIONAMIENTO CARROS
+
+```{r, eval=FALSE}
+######========================================================
+######   Script por Giovany Babativa-Márquez, PhD. 
+######========================================================
+#==  El conjunto de datos de marcas y atributos de los carros contiene 
+#==  la percepción de 1000 personas mayores de 25 años propietarias de 
+#==  vehículos. Realice un análisis multivariante que permita identificar 
+#==  el posicionamiento de las marcas.
+#==
+#==  Utilice los paquetes
+#==      1. FactoMineR
+#==      2. explor
+#==      3. Factoshiny
+#============================================================
+
+rm(list = ls())
+
+
+library(pacman)
+
+p_load(readxl, tidyverse, MultBiplotR, BiplotML, janitor, here, skimr, foreign,
+       factoextra, FactoMineR, Factoshiny, FactoInvestigate,
+       explor, BiplotGUI,
+       corrplot, patchwork,
+       RSpectra)
+
+#----- Ejemplo marcas de carros.
+#------ CA Simple
+
+datos2 <- read.spss("data/CarrosREES.sav", to.data.frame = T)
+
+glimpse(datos2)
+
+datos <- datos2 |> 
+         select(MARCAR, Atributo, Frecuencia) |> 
+         pivot_wider(names_from = Atributo, values_from = Frecuencia) |> 
+         column_to_rownames(var = "MARCAR")
+
+dev.off()
+res <- CA(datos, graph = F)
+
+res$eig
+corrplot(res$row$cos2)
+corrplot(res$row$coord, is.corr = FALSE)
+
+corrplot(res$col$cos2)
+corrplot(res$col$coord, is.corr = FALSE)
+
+
+out <- HCPC(res, nb.clust = 3)
+
+out$desc.var
+
+
+sout <- Factoshiny(datos)
+
+library(explor)
+explor(res)
+```
+
+\newpage
+
+# MANOVA BIPLOT
+
+```{r, eval=FALSE}
+#-------------------------------------------
+
+rm(list = ls())
+
+
+library(pacman)
+
+p_load(readxl, tidyverse, MultBiplotR, BiplotML, janitor, here, skimr, foreign,
+       factoextra, FactoMineR, Factoshiny, FactoInvestigate,
+       explor, BiplotGUI,
+       corrplot, patchwork,
+       RSpectra)
+
+
+#----- MANOVA Biplot
+
+vinos <- read.spss("data/vinos.sav", to.data.frame = T) |> 
+         janitor::clean_names()
+
+table(vinos$denomina, vinos$a_o)
+
+glimpse(vinos)
+
+X <- as.matrix(vinos[,4:21])
+
+#---- Primero haremos una análisis multivariante de la varianza
+?manova
+
+manvin <- manova(X ~ vinos$grupo)
+summary(manvin)   # Se rechaza Ho
+
+summary(manvin, test = "Wilks")
+summary(manvin, test = "Hotelling")
+summary(manvin, test = "Roy")
+
+#---- Representación multivariante -- Manova Biplot
+?CanonicalBiplot
+canbip <- CanonicalBiplot(X, group=vinos$grupo)
+summary(canbip)
+
+plot(canbip)
+plot(canbip, mode="s")
+```
+
+
+\newpage
+
+# BIPLOT LOGÍSTICO - SPIDERS
+
+```{r, eval=FALSE}
+######========================================================
+######   Script por Giovany Babativa-Márquez, PhD. 
+######========================================================
+#--- El paquete MultBiplotR contiene el conjunto de datos “spiders” el cual 
+#--- contiene 28 sitios de muestreo donde se identifica la presencia o ausencia 
+#--- de algunas especies de arañas. Realice un biplot logístico para identificar 
+#--- las especies que son más probables en los mismos sitios y concluya sobre las 
+#--- diferencias que se observen.
+#============================================================
+
+rm(list = ls())
+
+
+library(pacman)
+
+p_load(readxl, tidyverse, MultBiplotR, BiplotML, janitor, here, skimr, foreign,
+       factoextra, FactoMineR, Factoshiny, FactoInvestigate,
+       explor, BiplotGUI,
+       corrplot, patchwork,
+       RSpectra)
+
+
+#-------.
+data("spiders")
+?spiders
+
+datos <- spiders |> 
+         mutate(across(everything(), ~ifelse(. == "Absent", 0, 1)))
+
+
+glimpse(datos)
+
+outLB <- LogBip(x = datos, method = "MM")
+
+View(outLB$Ahat)
+```
+
+
+\newpage
+
+# BIPLOT LOGÍSTICO - DATOS EPIGENETICOS
+
+```{r, eval=FALSE}
+#============================================================
+
+rm(list = ls())
+
+
+library(pacman)
+
+p_load(readxl, tidyverse, MultBiplotR, BiplotML, janitor, here, skimr, foreign,
+       factoextra, FactoMineR, Factoshiny, FactoInvestigate,
+       explor, BiplotGUI,
+       corrplot, patchwork,
+       RSpectra)
+
+
+#-------.
+  
+load("data/xMethy.rda")
+
+
+cvMet_MM <- cv_LogBip(data = xMethy |> 
+                        select(-`Cancer Type`), k=0:5, method = "MM")
+
+bipMethy_MM <- LogBip(x = xMethy |> 
+                        select(-`Cancer Type`),
+                      k = 2,
+                      method = "MM",
+                      col.ind = xMethy$`Cancer Type`)
+
+PlotMet_MM <- plotBLB(bipMethy_MM, xylim = c(-100,100),
+                      col.ind = xMethy$`Cancer Type`, repel = T )+
+              labs(title = "Biplot Logístico",
+                   subtitle = "Estimación con el algoritmo MM-BCD",
+                   caption = "Gráfico elaborado por Giovany Babativa") +
+              theme_void() 
+
+
+PlotMet_MM
+
+
+Pi <- fitted_LB(bipMethy_MM, type = "response")
+
+View(Pi)
+```
+
+
+
+\newpage
+
+# ANÁLISIS FACTORIAL MÚLTIPLE
+
+```{r, eval=FALSE}
+rm(list = ls())
+
+library(FactoMineR)
+library(factoextra)
+library(tidyverse)
+
+data(wine)
+colnames(wine)
+
+glimpse(wine)
+
+res.mfa <- MFA(wine,  group = c(2, 5, 3, 10, 9, 2), 
+               type = c("n", "s", "s", "s", "s", "s"),
+               name.group = c("origen","olor.pre.agi","asp.visual",
+                              "olor.pos.agi", "sabor","desemp.gral"),
+               num.group.sup = c(1, 6),
+               graph = FALSE)
+
+print(res.mfa)
+eig.val = get_eigenvalue(res.mfa)
+head(eig.val)
+
+fviz_screeplot(res.mfa)
+
+grupos <- get_mfa_var(res.mfa, "group")
+grupos
+
+# Coordenadas de los grupos
+head(grupos$coord)
+
+# Cos2: calidad de la representación en el mapa factorial
+head(grupos$cos2)
+
+# Contribución a las dimensiones
+head(grupos$contrib)
+
+# Grafico para el grupo de variables
+fviz_mfa_var(res.mfa, "group")
+
+quanti.var = get_mfa_var(res.mfa, "quanti.var")
+quanti.var
+
+# Coordinates
+head(quanti.var$coord)
+# Cos2: quality on the factore map
+head(quanti.var$cos2)
+# Contributions to the dimensions
+head(quanti.var$contrib)
+
+fviz_mfa_var(res.mfa, "quanti.var", palette = "jco", 
+             col.var.sup = "violet", repel = TRUE)
+
+fviz_mfa_var(res.mfa, "quanti.var", palette = "jco", 
+             col.var.sup = "violet", repel = TRUE,
+             geom = c("point", "text"), legend = "bottom")
+
+# Contributions to dimension 1
+fviz_contrib(res.mfa, choice = "quanti.var", axes = 1, top = 20,
+             palette = "jco")
+
+# Contributions to dimension 2
+fviz_contrib(res.mfa, choice = "quanti.var", axes = 2, top = 20,
+             palette = "jco")
+
+
+g1 =fviz_mfa_var(res.mfa, "quanti.var", col.var = "cos2", 
+                 gradient.cols = c("white", "blue", "red"), 
+                 col.var.sup = "violet", repel = TRUE,
+                 geom = c("point", "text"))
+
+g1
+
+#### Grafica de los individuos
+
+ind = get_mfa_ind(res.mfa)
+
+g2 = fviz_mfa_ind(res.mfa, col.ind = "cos2", 
+                  gradient.cols = c("white", "blue", "red"),
+                  repel = TRUE)
+
+g2
+
+library(gridExtra)
+
+dev.new()
+grid.arrange(g1, g2, nrow=1)
+
+
+###La primera dimensión representa a la intensidad... 
+###1 DAM es el más intenso y armonioso, contrario a 1VAU y 2ING
+
+#### El eje 2 esta asociado a los vinos T2 y T1 caracterizados
+#### fuerte valor en Spice antes de agitar
+
+### la mayoría de variables cualitativas están sobre el origen
+### mostrando que no hay asociación con la intensidad y armonia,o
+### con el segundo eje
+
+### Aunque la categoria Soil=REFERENCE se relaciona con vinos
+### de calidad, frutas, armoniosos como 1ING o 1POY
+
+
+table(wine$Label)
+
+fviz_mfa_ind(res.mfa, 
+             habillage = "Label", # color by groups 
+             palette = c("#00AFBB", "#E7B800", "#FC4E07"),
+             addEllipses = TRUE, ellipse.type = "confidence", 
+             repel = TRUE # Avoid text overlapping
+) 
+
+table(wine$Soil)
+
+#### Grafico para multiples variables categoricas
+fviz_ellipses(res.mfa, c("Label", "Soil"), repel = TRUE)
+
+
+##### Grafica parcial de individuos
+fviz_mfa_ind(res.mfa, partial = "all") 
+
+### Solo algunos
+
+fviz_mfa_ind(res.mfa, partial = c("1DAM", "1VAU", "2ING"))
+
+###El vino 1DAM ha sido descrito  
+###como particularmente "intenso" y "armonioso", 
+### note el grupo de olores pre: tiene una alta coordenada 
+#### en el primer eje desde el punto de vista 
+
+
+### Desde el grupo de olores, 2ING fue más "intenso" y "armonioso" 
+## que 1VAU, pero desde el punto de vista del grupo de sabor
+### 1VAU fue más "intenso" y "armonioso" que 2ING.
+
+##### Grafic de ejes parciales
+
+fviz_mfa_axes(res.mfa)
+
+
+#### Ahora hagamos el ejercicio con Factoshiny
+
+library(Factoshiny)
+out <- Factoshiny::Factoshiny(wine)
+```
+

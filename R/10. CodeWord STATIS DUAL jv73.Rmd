@@ -1,0 +1,280 @@
+---
+title: "Análisis STATIS-DUAL para los datos ecológicos"
+author: "Giovany Babativa-Márquez, Ph.D."
+date: "Enero 2023"
+bibliography: references.bib
+link-citations: true
+toc-title: "Tabla de Contenido"
+lang: es
+output:
+  bookdown::word_document2:
+    extra_dependencies: ["booktabs", "table","xcdraw"]
+    md_extensions: +footnotes
+    reference_docx: Plantilla.docx
+    toc: true
+    number_sections: true
+    fig_caption: yes
+fontsize: 12pt
+---
+
+```{r setup, include=FALSE}
+options(scipen=999, warn=-1, survey.lonely.psu="certainty")
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, echo = TRUE,
+                      fig.align  = "center",
+                      tab.cap.pre = "Tabla ")
+library(pacman)
+
+p_load(here, tidyverse, readxl, janitor, flextable, officer)
+
+custom_tab <- function(df){
+  mytab <- df |>  
+    flextable() |> 
+    bg(bg = "#5786C0", part = "header")  |> 
+    color(color = "white", part = "header") |> 
+    autofit()
+  return(mytab)
+}
+
+```
+
+
+```{r, include=F}
+library(tidyverse)
+library(ade4) 
+library(adegraphics)
+library(corrplot)
+library(readxl)
+```
+# Introducción
+
+La famosa tesis de @verneaux1973, parte de los datos revisados por el autor y están disponible por en la biblioteca `ade4` en el conjunto `data(jav73)`. 
+
+El objeto es una lista de 7 componentes, _morpho_, _phychi_, _poi_, _xy_, _contour_ y _fac.riv_. Originalmente había 111 estaciones repartidas a lo largo de 12 ríos. Se eliminan las algunas estaciones colocadas en los embalses del Alto Doubs y que no están relacionados con el problema planteado. El conjunto de datos queda compuesto por 92 estaciones.
+
+```{r}
+data("jv73")
+```
+
+El componente *morpho* proporciona información para 6 variables morfológicas. Las variables retenidas para la descripción simplemente se recodifican para estandarizar las amplitudes de variación y hacer que las distribuciones sean más aceptables. Las variables pueden tomar valores entre 0 y 9.
+
+```{r}
+glimpse(jv73$morpho)
+```
+
+El componente *phychi* proporciona información sobre 12 variables físico-químicas.
+
+```{r}
+glimpse(jv73$phychi)
+```
+
+El componente *fac.riv* es un factor que divide las 92 estaciones en clases definidas por los ríos muestreados. Hay 12 modalidades respectivamente 
+
+
+```{r}
+levels(jv73$fac.riv)
+```
+
+El componente *poi* da la abundancia de cada especie en cada estación en forma de nota de abundancia definida para cada especie, entera, entre 0 (ausencia de la especie) y 5 (máxima abundancia). Las variables del componente son:
+
+```{r}
+glimpse(jv73$poi)
+```
+
+Finalmente, los componentes xy y contour son información elemental que se puede utilizar para obtener Mapas simplificados de este tipo
+
+```{r}
+s.label(jv73$xy, cont = jv73$contour, clabel = 0.5)
+```
+
+# Paquetes
+
+Los paquetes necesarios para el análisis son: 
+```
+library(tidyverse) 
+library(ade4) 
+library(adegraphics)
+library(corrplot)
+library(readxl)
+```
+
+# Estructura de los datos
+
+Se coloca en las columnas las variables (mismos para todas las $k$-tablas), y se ordenan los datos según la variable que forma la tercera dimensión-vía, en este caso es _river_.
+
+```{r}
+datos <- data.frame(river = jv73$fac.riv,
+                    jv73$morpho)
+```
+
+Note que $K= 12$ estaciones ríos, $p=6$ porque son las mismas variables morfológicas en cada $k$-tabla, mientras que $n$ varia en cada grupo (cantidad de filas diferentes), o puntos de muestreo en cada $k$-tabla.
+
+```{r}
+res <- datos |> 
+       group_by(river) |> 
+       summarise(across(everything(), ~mean(.)),
+                 ni = n())
+```
+
+# Estandarización y separación k-tablas
+
+Se estandarizan los datos
+
+1.    Aplicar un PCA (en este caso no es necesario normalizar, ya que las variables están todas en la misma escala). 
+2.    Utilizamos la variable _river_ para identificar las $K$-tablas.
+3.    Aplicar escalamiento TOTAL o PARCIAL
+
+
+En este caso es elección del usuario si hace un preprocesamiento de los datos o no.
+
+```{r, fig.height=4}
+#---- Aplica componentes principales
+wpca <- withinpca(jv73$morpho, jv73$fac.riv, scannf = F)
+```
+
+# STATIS DUAL
+
+Abrimos las $K$ tablas en objetos diferentes.
+
+```{r}
+#---- Abre los objetos en K tablas para poder hacer el STATIS.
+ktab1 <-  ktab.within(wpca)
+```
+
+Realizamos el análisis STATIS sobre el objeto que contiene las $K$-Tablas, no le establecemos el número de dimensiones a retener.
+
+```{r}
+statis1 <- statis(ktab1, scannf = F) 
+```
+
+# Análisis de la inter-estructura
+
+El gráfico de correlación permite observar que hay una alta correlación vectorial entre las $K$ tablas.
+
+```{r}
+corrplot(statis1$RV)     
+```
+
+Coeficientes de correlación altos, indican condiciones morfológicas similares, esto se ve reflejado en el gráfico de la Inter-estructura
+
+```{r tab2, tab.cap = "Coeficientes de Correlación Vectorial"}
+res <- data.frame(statis1$RV)
+custom_tab(res)
+```
+
+```{r,fig.cap="Resumen general del STATIS"}
+a <- plot(statis1,plot=F)
+
+s1.1 <- s.corcircle(statis1$RV.coo, pbackground.box = F, plabels.cex=0.5,fullcircle = T,plot = F,psub = list(text = "Interestructure", cex = 1))
+
+s1.2<-plotEig(statis1$RV.eig, yax = 1, nf = 1, pbackground.box = TRUE,
+      psub = list(text = "Eigenvalues", cex = 2) , plot = FALSE)
+
+s1 <- ADEgS(list(s1.1, s1.2), rbind(c(0, 0, 1, 1), c(0.02, 0.02, 0.23, 0.45)),plot = F)
+
+s4 <- s.corcircle(statis1$RV.coo, pbackground.box = TRUE,plabels.cex=0.8,fullcircle = F, plot = F)
+
+ s2.1 <- s.label(statis1$C.li,psub = list(text = "Rows (Compromise)", cex = 1,position=c(1,0,0,0)), plot = F)
+ s2.2 <- plotEig(statis1$C.eig,pbackground.box = TRUE,psub = list(text = "Eigenvalues", cex = 2), plot = F)
+ s2 <- ADEgS(list(s2.1, s2.2), rbind(c(0, 0, 1, 1), c(0.02, 0.02, 0.23, 0.45)), plot = F)
+
+ a[[1]] <- s1 
+ a[[4]] <- s4
+ a[[3]] <- s2
+
+a
+```
+
+*Interestructura*: Indica las k-tablas que presentan estructuras similares (condiciones morfológicas similares).
+
+* *Compromiso*: indica las condiciones morfológicas promedio, entre los 12 ríos.
+
+* *Valor tipológico*: Grafica los pesos y el $cos^2$ de cada $k$-tabla. Acá se conoce cuáles son las tablas que más aportan información para construir la matriz consenso (pesos altos) y que a su vez son las tablas que están mejor representadas por la matriz consenso ($cos^2$ altos).
+
+
+El análisis de la interestructura indica que el primer eje recoge la mayor porción de la información y que las $k$-tablas presentan estructuras similares (condiciones morfológicas similares). Al parecer pueden existir 3 grupos de ríos con condiciones morfológicas diferentes. 
+
+```{r, fig.cap="Inter-estructura"}
+s1
+```
+
+```{r tab3, tab.cap = "Valores Propios para la inter-estructura"}
+res <- data.frame(
+                  RVEig = statis1$RV.eig,
+                  "Porc Var"= statis1$RV.eig/sum(statis1$RV.eig),
+                  "Porc Var Acum"= cumsum(statis1$RV.eig/sum(statis1$RV.eig)))
+
+custom_tab(res)
+```
+
+La estructura del compromiso indica las condiciones morfológicas promedio, entre los 12 ríos. Se observa una fuerte correlación directa entre la Distancia a la fuente y Sección húmeda (Smm y Das). La variable Das es la que contribuye con mayor información para el Eje 1 (ángulo muy agudo con el eje 1) en el compromiso, mientras que la La variable Vme es la que contribuye con mayor información para el Eje 2  en el compromiso
+
+Note que existe una alta correlación de manera directa entre la Altitud y la Pendiente (Alt y Pen). A su vez tienen alta correlación inversa con Smm y Das.
+
+Velocidad (Vme) presenta una correlación nula - independiente con la Altitud y débil con la Pendiente. 
+
+Qmm - Caudal promedio presenta correlación no moderada con Smm y Das. 
+
+```{r, fig.cap="Compromiso"}
+s2
+```
+
+En la gráfica de valor topológico se presenta las $K$-tablas que más aportan con información para construir la matriz consenso (pesos altos) y a su vez son las tablas que son mejor representadas por la matriz consenso ($cos^2$ altos)
+
+```{r, fig.cap="Valor Tipológico "}
+a[[2]]
+```
+
+Valores altos de $cos^2$, indican que el compromiso representa de mejor manera las condiciones morfológicas de esas tablas. 
+
+```{r tab4, tab.cap = "Cosenos al cuadrado"}
+ res <- data.frame(AS=statis1$tab.names,
+                   cos2=statis1$cos2)
+```
+
+```{r pesos, tab.cap = "Pesos de las K-Tablas en el compromiso"}
+pesos <- data.frame(rio = levels(jv73$fac.riv), 
+                    pesos = statis1$RV.tabw) 
+
+custom_tab(pesos)
+```
+
+
+Valores propios para el compromiso
+
+```{r tab5, tab.cap = "Valores Propios para el compromiso"}
+res <- data.frame(
+                  CEig = statis1$C.eig,
+                  "Porc Var" = statis1$C.eig/sum(statis1$C.eig),
+                  "Porc Var Acum" = cumsum(statis1$C.eig/sum(statis1$C.eig)))
+
+custom_tab(res)
+```
+
+# Intraestructura
+
+```{r, fig.cap="Analisis separados sobre el consenso"}
+kpl <- kplot(statis1, col.plabels = list(cex = 1.3, col = "red"), 
+          psub.cex = 3, pgrid.text.cex = 2) #Analisis separados sobre el consenso
+
+kpl
+```
+
+Interpretación para Allaine. 
+
+Los puntos de muestreo (35, 34, 33 y 32) se carcterizan por tener altos valores (por encima del valor promedio) en Velocidad (Vme) y Caudal Promeddio (Qmm) en toda la región Doubs, mientras que en los puntos de muestreo (28 y 29) ocurrió lo contrario, son los que presentaron los valores más bajos (por debajo del promedio) en Vme y Qmm (puntos con características opuestas). El punto 35 además, presenta altos valores (por encima del promedio) en Distancia a la fuente (Das) y Sección Húmeda (Smm).
+
+El punto 30 posee altos valores (por encima del promedio) en Altitud y Pendiente. El punto 31 contiene valores alrededor del promedio.  Este análisis se debe realizar para cada río (k-tabla)
+
+```{r, fig.cap="Correlaciones para Allaine y Mapa de factores  "}
+
+slC <- s.label(statis1$C.li, plabels.cex = 1, plabels.optim = TRUE,
+               plot = FALSE)
+
+ADEgS(list(kpl[[1]],slC), add = matrix(c(0, 1, 0, 0), byrow = TRUE, ncol = 2))
+```
+
+\newpage
+
+# Referencias {.unlisted .unnumbered}
+
+

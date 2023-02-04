@@ -1,0 +1,156 @@
+---
+title: "Análisis Tríadico Parcial para los datos ambientales"
+author: "Giovany Babativa-Márquez, Ph.D."
+date: "Enero 2023"
+bibliography: references.bib
+link-citations: true
+toc-title: "Tabla de Contenido"
+lang: es
+output:
+  bookdown::word_document2:
+    extra_dependencies: ["booktabs", "table","xcdraw"]
+    md_extensions: +footnotes
+    reference_docx: Plantilla.docx
+    toc: true
+    number_sections: true
+    fig_caption: yes
+fontsize: 12pt
+---
+
+```{r setup, include=FALSE}
+options(scipen=999, warn=-1, survey.lonely.psu="certainty")
+knitr::opts_chunk$set(warning=FALSE, message=FALSE, echo = TRUE,
+                      fig.align  = "center",
+                      tab.cap.pre = "Tabla ")
+library(pacman)
+
+p_load(here, tidyverse, readxl, janitor, flextable, officer)
+
+custom_tab <- function(df){
+  mytab <- df |>  
+    flextable() |> 
+    bg(bg = "#5786C0", part = "header")  |> 
+    color(color = "white", part = "header") |> 
+    autofit()
+  return(mytab)
+}
+
+```
+
+#Paquetes
+
+```{r}
+library(pacman)
+
+p_load(tidyverse, readxl, here,
+       ade4, adegraphics)
+```
+
+# Introducción
+
+Se tienen los datos sobre cinco lugares de muestreo a lo largo de un pequeño arroyo francés (el Meaudret), los cuales fueron recogidos cuatro veces, en primavera, verano, otoño e invierno y se midieron variables ambientales (químicas) y biológicas.
+
+# Estructura de los datos
+
+El conjunto de los datos se carga desde la libraria `ade4` o desde el conjunto de datos de Excel que ha sido exportado para mostrar la estructura de los mismos.
+
+```{r}
+datos <- read_excel(here::here("data/meaudret.xlsx")) |> 
+         mutate_if(is.character, as.factor)
+
+glimpse(datos)
+```
+
+Ahora hacemos un preprocesamiento (estandarización de los datos) utilizando el método de estandarización Parcial de Bouroche, donde el centrado y normalizado se hace por cada tabla.
+
+```{r}
+wit1 <- withinpca(datos |> 
+                    select(-id, -season, -site) , datos$season, 
+                  scan = FALSE,             
+                  scal = "partial")
+
+```
+
+Ahora le vamos a crear las $K$-tablas y le indicamos que en cada estación los sitios de muestreo están en la variable `site`.
+
+```{r}
+ktab <- ktab.within(wit1, colnames = datos$site)
+```
+
+Note que al revisar el objeto de la tabla en otoño, el mismo se encuentra transpuesto.
+
+```{r}
+ktab$autumn
+```
+
+De modo que se llevará a la estructura teórica para realizar el análisis.
+
+```{r}
+kta2 <- t(ktab)
+```
+
+El análisis triadico parcial (PTA por sus siglas en inglés) se realiza con la función `pta` del paquete `ade4`.
+
+```{r}
+pta1 <- pta(kta2, scann = FALSE)
+```
+
+Podemos ahora graficar el resultado del análisis.
+
+```{r fig1, fig.cap="Resumen PTA"}
+plot(pta1)
+```
+
+Del análisis de la interestructura se observa que las $k$-tablas presentan estructuras similares (condiciones ambientales similares). Esto se puede verificar con los coeficientes de Correlación Vectorial, los cuales resultan altos como se presenta en la Tabla \@ref(tab:tab1). RV altos indican similaridades entre el las condiciones medioambientales durante las estaciones climáticas
+
+```{r tab1, tab.cap = "Coeficientes de Correlación Vectorial"}
+custom_tab(data.frame(pta1$RV) |> 
+             rownames_to_column(var = "estacion"))
+```
+
+Para revisar cuales estaciones se encuentran mejor representadas en el espacio del compromiso, podemos revisar los valores del $cos^2$. Valores altos indican que está mejor representado. El compromiso representa de mejor la información medioambiental que ocurrió en Autumn y en Summer, y es débil para representar la información de Winter sobre el espacio compromiso.
+
+
+```{r tab2, tab.cap = "Cosenos al cuadrado"}
+custom_tab(data.frame(TABLA=pta1$tab.names,cos2=pta1$cos2))
+```
+
+También podemos revisar cuáles tablas pesan más en la construcción del compromiso, vemos que la estación de invierno es la que menos pesa, mientras que otoño y verano son las que más pesan en la construcción.
+
+```{r tab3, tab.cap = "Pesos para las K-tablas"}
+custom_tab(data.frame(TABLA=pta1$tab.names,
+           tabw=pta1$tabw))
+```
+
+Los valores Propios para la inter-estructura, permiten observar que el análisis es adecuado ya que la primera componente explica el 70.3% de la variabilidad, de modo que la información entre las tablas es estable.
+
+```{r tab4, tab.cap = "Valores Propios para la inter-estructura"}
+tab <- data.frame(RV_Eig= pta1$RV.eig,
+                  Varianza= pta1$RV.eig/sum(pta1$RV.eig),
+                  Acumulado= cumsum(pta1$RV.eig/sum(pta1$RV.eig)))
+
+custom_tab(tab)
+```
+
+En el compromiso los 2 primeros componentes explican un 96.8% de la varianza
+
+```{r tab6, tab.cap = "Valores Propios del compromiso"}
+tab <- data.frame(C_Eig= pta1$eig,
+                  Varianza= pta1$eig/sum(pta1$eig),
+                  Acumulado= cumsum(pta1$eig/sum(pta1$eig)))
+
+custom_tab(tab)
+
+```
+
+Para el análisis de la intraestructura, se proyecta la información de cada $k$-tabla sobre el espacio del compromiso
+
+```{r, fig.cap="Proyección de los ejes principales del ACP sobre el PTA"}
+kplot(pta1)
+```
+
+Note como Winter presenta una condición ambiental diferente, la variable Temp presenta correlación débil con las otras variables. Las condiciones de los sitios S2 son similares a las condiciones del sitio S3 y, poseen valores por encima del valor promedio en Phos, Oxyd y Amno principalmente
+
+\newpage
+
+# Referencias {.unlisted .unnumbered}
